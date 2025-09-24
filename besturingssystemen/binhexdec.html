@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Base-conversie Oefenpagina (binair ↔ hex ↔ decimaal)</title>
+  <style>
+    :root { --bg:#0f172a; --ink:#e5e7eb; --muted:#94a3b8; --card:#0a0f1a; --chip:#1f2937; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans';
+      background:radial-gradient(1200px 600px at 80% -10%,#1f2937,transparent),radial-gradient(800px 500px at -10% 110%,#1f2937,transparent),var(--bg);
+      color:var(--ink);display:grid;place-items:start center;padding:28px 16px 64px}
+    .wrap{max-width:1080px;width:100%}
+    header{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-bottom:16px}
+    h1{font-size:clamp(20px,4vw,34px);margin:0;letter-spacing:.4px}
+    .tag{background:var(--chip);color:var(--ink);padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2b3648}
+    .card{background:linear-gradient(180deg,#0d1220,#0a0f1a);border:1px solid #1f2937;border-radius:16px;padding:18px;box-shadow:0 10px 30px #00000066}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media (min-width:980px){.grid{grid-template-columns:1.2fr .8fr}}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .muted{color:var(--muted)}
+    .chip{padding:4px 8px;border-radius:999px;background:#0b1220;border:1px solid #223049;font-size:12px}
+    input[type="text"],input[type="number"]{width:100%;box-sizing:border-box;background:#0b1220;color:var(--ink);border:2px solid #263244;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus{border-color:#3b82f6}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+    .inputs{display:grid;grid-template-columns:1fr;gap:12px}
+    @media (min-width:680px){.inputs{grid-template-columns:1fr 1fr}}
+    .btns{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+    button{background:#111827;color:var(--ink);border:1px solid #263244;border-radius:12px;padding:10px 14px;font-size:14px;cursor:pointer}
+    button.primary{background:#1b2a42;border-color:#35507c}
+    button.good{background:#0c2d19;border-color:#197a42}
+    button.bad{background:#3a1313;border-color:#7a1c1c}
+    .result{padding:10px 12px;border-radius:10px;border:1px solid #223049;background:#0c1324}
+    .ok{color:var(--ok)} .no{color:var(--bad)} .warn{color:var(--warn)}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    kbd{background:#0b1220;border:1px solid #2b3648;padding:2px 6px;border-radius:6px}
+    .hint{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Base-conversie Oefenpagina</h1>
+      <span class="tag">altijd 16-bit • binair ↔ hex ↔ decimaal</span>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="row" style="justify-content:space-between; align-items:start">
+          <div>
+            <div class="muted">Instellingen</div>
+            <div class="row">
+              <span class="chip" id="range-info">16-bit • 0 – 65535</span>
+              <span class="chip" id="given-info">Gegeven: —</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="new">Nieuwe oefening ↻</button>
+          <button class="good" id="check">Nakijken ✓</button>
+          <button class="bad" id="solution">Toon oplossing</button>
+        </div>
+
+        <div class="inputs">
+          <div>
+            <label>Decimaal</label>
+            <input type="number" id="inp-dec" placeholder="0 – 65535" />
+            <div class="hint"></div>
+          </div>
+          <div>
+            <label>Hexadecimaal</label>
+            <input type="text" id="inp-hex" placeholder="0x0000 – FFFF" />
+            <div class="hint">Hoofd/klein oké; <kbd>0x</kbd> mag.</div>
+          </div>
+          <div style="grid-column:1 / -1">
+            <label>Binair</label>
+            <input type="text" id="inp-bin" placeholder="0000 0000 0000 0000" />
+            <div class="hint"></div>
+          </div>
+        </div>
+
+        <div id="feedback" class="result" style="display:none; margin-top:14px"></div>
+      </section>
+
+      <aside class="card">
+        <h3 style="margin-top:0">Oefeningen Bin / Hex / Dec</h3>
+      </aside>
+    </div>
+
+    <div class="hint" style="text-align:center; margin-top:10px">© Ward De Ridder - AP Hogeschool</div>
+  </div>
+
+<script>
+function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+function padLeft(str,len,ch){str=String(str); while(str.length<len) str=ch+str; return str;}
+function groupNibbles(bin){ return bin.replace(/(.{4})/g,'$1 ').trim(); }
+function toBin16(n){ let x = Number(n>>>0) & 0xFFFF; let s = x.toString(2); return padLeft(s,16,'0'); }
+function toHex4(n){ let x = Number(n>>>0) & 0xFFFF; let s = x.toString(16).toUpperCase(); return padLeft(s,4,'0'); }
+function parseHex(str){ if(!str) return null; let s=str.trim(); if(s.startsWith('0x')||s.startsWith('0X')) s=s.slice(2); if(!/^([0-9a-fA-F]{1,4})$/.test(s)) return null; return parseInt(s,16)>>>0; }
+function parseBin16(str){ if(!str) return null; let s=str.trim().replace(/[_\s]/g,''); if(!/^[01]{1,16}$/.test(s)) return null; return parseInt(s,2)>>>0; }
+function parseDec16(str){ if(str===''||str===null||str===undefined) return null; let n=Number(str); if(!Number.isFinite(n)||n<0||n>65535) return null; return Math.floor(n)>>>0; }
+
+let state=null;
+function newExercise(){
+  const bits=16, max=65535;
+  const value = randInt(0,max);
+  const given = ['dec','hex','bin'][randInt(0,2)];
+  state = { bits, max, value, given };
+  document.getElementById('range-info').textContent = `16-bit • 0 – ${max}`;
+  document.getElementById('given-info').textContent = `Gegeven: ${given.toUpperCase()}`;
+  const bin = groupNibbles(toBin16(value));
+  const hex = toHex4(value);
+  const dec = String(value);
+  const reset = (id)=>{ const el=document.getElementById(id); el.value=''; el.style.borderColor='#263244'; };
+  reset('inp-dec'); reset('inp-hex'); reset('inp-bin');
+  if(given==='dec') document.getElementById('inp-dec').value = dec;
+  if(given==='hex') document.getElementById('inp-hex').value = hex;
+  if(given==='bin') document.getElementById('inp-bin').value = bin;
+  document.getElementById('feedback').style.display='none';
+}
+
+function mark(el, status){ if(status==='ok') el.style.borderColor='#22c55e'; else if(status==='empty') el.style.borderColor='#f59e0b'; else el.style.borderColor='#ef4444'; }
+
+function check(){
+  const {value, given} = state;
+  const needDec = (given!=='dec');
+  const needHex = (given!=='hex');
+  const needBin = (given!=='bin');
+  function cmpDec(){ const v=parseDec16(document.getElementById('inp-dec').value); if(v===null){return 'empty';} return (v===value)?'ok':'bad'; }
+  function cmpHex(){ const raw=document.getElementById('inp-hex').value; if(!raw||raw.trim()==='') return 'empty'; const v=parseHex(raw); if(v===null) return 'bad'; return (v===value)?'ok':'bad'; }
+  function cmpBin(){ const raw=document.getElementById('inp-bin').value; if(!raw||raw.trim()==='') return 'empty'; const v=parseBin16(raw); if(v===null) return 'bad'; return (v===value)?'ok':'bad'; }
+  let allOk=true;
+  if(needDec){ const st=cmpDec(); mark(document.getElementById('inp-dec'),st); allOk = allOk && (st==='ok'); } else { mark(document.getElementById('inp-dec'),'ok'); }
+  if(needHex){ const st=cmpHex(); mark(document.getElementById('inp-hex'),st); allOk = allOk && (st==='ok'); } else { mark(document.getElementById('inp-hex'),'ok'); }
+  if(needBin){ const st=cmpBin(); mark(document.getElementById('inp-bin'),st); allOk = allOk && (st==='ok'); } else { mark(document.getElementById('inp-bin'),'ok'); }
+  const fb=document.getElementById('feedback'); fb.style.display='block'; fb.innerHTML = allOk ? `✅ <span class="ok">Helemaal juist!</span>` : `❌ <span class="no">Nog niet alles klopt.</span> <span class="muted">Groen = juist, oranje = leeg, rood = fout.</span>`;
+}
+
+function showSolution(){
+  const {value} = state;
+  document.getElementById('inp-dec').value = String(value);
+  document.getElementById('inp-hex').value = toHex4(value);
+  document.getElementById('inp-bin').value = groupNibbles(toBin16(value));
+  ['inp-dec','inp-hex','inp-bin'].forEach(id=>mark(document.getElementById(id),'ok'));
+  const fb=document.getElementById('feedback'); fb.style.display='block'; fb.innerHTML = `ℹ️ Oplossing ingevuld.`;
+}
+
+// Wire-up
+ document.getElementById('new').addEventListener('click', newExercise);
+ document.getElementById('check').addEventListener('click', check);
+ document.getElementById('solution').addEventListener('click', showSolution);
+
+newExercise();
+</script>
+</body>
+</html>
