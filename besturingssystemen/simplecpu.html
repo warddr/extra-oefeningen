@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3‑bit CPU Emulator (32×8)</title>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827ee; /* gray-900 */
+      --muted: #94a3b8; /* slate-400 */
+      --text: #e5e7eb; /* gray-200 */
+      --accent: #22d3ee; /* cyan-400 */
+      --accent2: #a78bfa; /* violet-400 */
+      --ok: #34d399; /* green-400 */
+      --warn: #f59e0b; /* amber-500 */
+      --err: #f87171; /* red-400 */
+      --mono: ui-monospace, Menlo, Monaco, "Cascadia Mono", Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    *{box-sizing:border-box}
+    body { margin: 0; background: linear-gradient(180deg, #0b1023, #090e1a 50%, #0b1023); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    header { padding: 20px 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; position:sticky; top:0; background:linear-gradient(180deg, rgba(9,14,26,.95), rgba(9,14,26,.6)); backdrop-filter: blur(6px); border-bottom:1px solid #1f2937; }
+    header h1 { margin: 0; font-size: clamp(18px, 2.4vw, 22px); letter-spacing: .2px; }
+    header h1 span { color: var(--accent); }
+
+    main { padding: 16px; max-width: 1200px; margin: 0 auto; display:grid; grid-template-columns: 1.2fr .8fr; gap: 16px; }
+
+    .card { background: var(--panel); border: 1px solid #1f2937; border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--muted); font-weight: 600; letter-spacing:.3px }
+
+    textarea, input[type="text"], input[type="number"] { width: 100%; background: #0b1023; border: 1px solid #1f2937; color: var(--text); border-radius: 12px; padding: 10px 12px; font-family: var(--mono); font-size: 13px; outline: none; }
+    textarea { min-height: 140px; resize: vertical; }
+
+    .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .row > * { flex: 1 1 auto; }
+
+    button { background: #111827; border: 1px solid #273042; color: var(--text); border-radius: 12px; padding: 9px 12px; font-weight: 600; cursor: pointer; transition: transform .05s ease, background .2s ease; }
+    button:hover { background: #0f172a; }
+    button:active { transform: translateY(1px); }
+    .primary { border-color: #334155; background: linear-gradient(180deg, #0f172a, #0b1023); }
+    .warn { border-color: #7c2d12; color:#fde68a; }
+    .good { border-color: #14532d; color:#bbf7d0; }
+
+    .grid { display:grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+    .cell { background:#0b1023; border: 1px solid #1f2937; border-radius: 10px; padding:8px; font-family: var(--mono); font-size: 12px; display:flex; flex-direction:column; gap:6px; }
+    .cell .addr { color: var(--muted); font-size: 11px; }
+    .cell .val { font-size: 14px; letter-spacing: .3px; }
+    .pc { outline: 2px solid var(--accent); }
+    .ip { outline: 2px dashed var(--accent2); }
+
+    .kvs { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: var(--mono); }
+    .kvs .kv { background:#0b1023; border: 1px solid #1f2937; border-radius: 10px; padding:8px; }
+
+    .out { font-family: var(--mono); background:#0b1023; border: 1px solid #1f2937; border-radius: 12px; padding:8px; min-height:60px; }
+
+    .badge { display:inline-flex; align-items:center; gap:6px; font-family: var(--mono); font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #1f2937; background:#0b1023; }
+    .badge.ok { border-color:#14532d; }
+    .badge.warn { border-color:#7c2d12; }
+
+    .muted { color: var(--muted); }
+    .mono { font-family: var(--mono); }
+    .hint { font-size:12px; color:#9ca3af; }
+    footer { color:#718096; text-align:center; padding: 24px; font-size: 12px; }
+    .small { font-size: 11px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>3‑bit CPU Emulator <span>JS</span> — 32×8 RAM, PC+ACC</h1>
+    <div class="hint">Opcodes: 000 READ, 001 WRITE, 010 ADD, 011 SUB, 100 INPUT, 101 OUTPUT, 110 GOTOIFNEG, 111 HALT</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Program (8‑bit instructies: 3‑bit opcode + 5‑bit adres)</h2>
+      <div class="row">
+        <textarea id="program" placeholder="Voer binaire instructies in, gescheiden door spaties of nieuwe lijnen.\nVoorbeeld: \n00000000 10000000 10100000 11100000\n(READ 0, INPUT, OUTPUT, HALT)"></textarea>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" id="btnLoad">Programma laden</button>
+        <button id="btnClear">Wissen</button>
+        <div class="hint">Laden schrijft de bytes vanaf adres 0 in RAM.</div>
+      </div>
+
+      <h2 style="margin-top:16px">Besturing</h2>
+      <div class="row">
+        <button id="btnReset">Reset</button>
+        <button id="btnStep">Stap</button>
+        <button class="good" id="btnRun">Run</button>
+        <button class="warn" id="btnPause">Pauze</button>
+        <input id="maxCycles" type="number" min="1" value="2000" style="max-width:140px" />
+        <label for="maxCycles" class="hint">Max cycles</label>
+      </div>
+
+      <h2 style="margin-top:16px">I/O</h2>
+      <div class="row">
+        <input type="text" id="inputVals" placeholder="Inputqueue: bv. 5, 10, 255" />
+        <button id="btnPushInput">Zet input</button>
+        <button id="btnClearInput">Leeg input</button>
+        <span id="waitBadge" class="badge warn" style="display:none">Wacht op INPUT…</span>
+      </div>
+      <div style="margin-top:8px">
+        <div class="muted small">Queue: <span class="mono" id="inputQueue">[ ]</span></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <h2>OUTPUT</h2>
+        <div class="out" id="output"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="btnClearOut">Leeg output</button>
+          <span class="hint">OUTPUT (101) schrijft de ACC-waarde (0..255) naar dit log.</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <h2>Registers & Flags</h2>
+      <div class="kvs">
+        <div class="kv"><strong>PC</strong><div class="mono" id="pc">0 (00000)</div></div>
+        <div class="kv"><strong>ACC</strong><div class="mono" id="acc">0 (0x00)</div></div>
+        <div class="kv"><strong>ACC (signed)</strong><div class="mono" id="accSigned">0</div></div>
+        <div class="kv"><strong>Neg flag</strong><div><span id="negFlag" class="badge">NEG=0</span></div></div>
+      </div>
+
+      <h2 style="margin-top:16px">Geheugen (32 × 8‑bit)</h2>
+      <div class="grid" id="mem"></div>
+
+      <h2 style="margin-top:16px">Huidige instructie</h2>
+      <div class="mono" id="instr">—</div>
+      <div class="hint small">Formaat: <span class="mono">ooo aaaaa</span> → <span class="mono">opcode</span> + <span class="mono">adres</span></div>
+    </aside>
+  </main>
+
+  <footer>
+    Gedefinieerde ISA: <span class="mono">000 READ, 001 WRITE, 010 ADD, 011 SUBTRACT, 100 INPUT, 101 OUTPUT, 110 GOTOIFNEG, 111 HALT</span>. Resultaatnegatief = ACC bit7.
+  </footer>
+
+  <script>
+    // ===== CPU Model =====
+    class SimpleCPU {
+      constructor() {
+        this.reset();
+      }
+      reset() {
+        this.ram = new Uint8Array(32); // 32 bytes RAM
+        this.pc = 0;                   // 5-bit Program Counter
+        this.acc = 0;                  // 8-bit Accumulator (data register)
+        this.neg = 0;                  // Negative flag (bit7 of ACC)
+        this.halted = false;
+        this.waitingForInput = false;
+        this.inputQueue = [];
+        this.output = [];
+      }
+      // Helpers
+      get signedAcc() { return (this.acc & 0x80) ? (this.acc - 256) : this.acc; }
+      setAcc(v) { this.acc = v & 0xFF; this.neg = (this.acc & 0x80) ? 1 : 0; }
+      pushInput(values) { this.inputQueue.push(...values.map(v => v & 0xFF)); }
+      clearIO() { this.output = []; this.inputQueue = []; }
+
+      // Execute one instruction. Returns a status string.
+      step() {
+        if (this.halted) return "HALTed";
+        if (this.waitingForInput) return "WAIT";
+        const addr = this.pc & 0x1F;
+        const instr = this.ram[addr] & 0xFF;
+        const opcode = (instr >> 5) & 0x7;       // top 3 bits
+        const operand = instr & 0x1F;            // low 5 bits (0..31)
+        const nextPC = (this.pc + 1) & 0x1F;     // wrap within 0..31
+
+        const OP = {
+          READ: 0b000,
+          WRITE: 0b001,
+          ADD: 0b010,
+          SUB: 0b011,
+          INPUT: 0b100,
+          OUTPUT: 0b101,
+          GOTOIFNEG: 0b110,
+          HALT: 0b111
+        };
+
+        let jumped = false;
+        let status = "OK";
+        switch (opcode) {
+          case OP.READ:      // ACC = RAM[operand]
+            this.setAcc(this.ram[operand]);
+            break;
+          case OP.WRITE:     // RAM[operand] = ACC
+            this.ram[operand] = this.acc & 0xFF;
+            break;
+          case OP.ADD:       // ACC = ACC + RAM[operand]
+            this.setAcc((this.acc + this.ram[operand]) & 0xFF);
+            break;
+          case OP.SUB:       // ACC = ACC - RAM[operand]
+            this.setAcc((this.acc - this.ram[operand]) & 0xFF);
+            break;
+          case OP.INPUT:     // ACC = next input (if none → wait)
+            if (this.inputQueue.length === 0) {
+              this.waitingForInput = true;
+              status = "WAIT";
+              break;
+            } else {
+              const v = this.inputQueue.shift();
+              this.setAcc(v);
+            }
+            break;
+          case OP.OUTPUT:    // push ACC to output
+            this.output.push(this.acc & 0xFF);
+            break;
+          case OP.GOTOIFNEG: // if NEG → PC = operand
+            if (this.neg) { this.pc = operand & 0x1F; jumped = true; }
+            break;
+          case OP.HALT:
+            this.halted = true;
+            status = "HALT";
+            break;
+          default:
+            status = "ERR";
+        }
+
+        if (!jumped && !this.halted && status !== "WAIT") {
+          this.pc = nextPC;
+        }
+        return status;
+      }
+    }
+
+    // ===== UI glue =====
+    const cpu = new SimpleCPU();
+
+    const els = {
+      program: document.getElementById('program'),
+      btnLoad: document.getElementById('btnLoad'),
+      btnClear: document.getElementById('btnClear'),
+      btnReset: document.getElementById('btnReset'),
+      btnStep: document.getElementById('btnStep'),
+      btnRun: document.getElementById('btnRun'),
+      btnPause: document.getElementById('btnPause'),
+      btnPushInput: document.getElementById('btnPushInput'),
+      btnClearInput: document.getElementById('btnClearInput'),
+      inputVals: document.getElementById('inputVals'),
+      inputQueue: document.getElementById('inputQueue'),
+      output: document.getElementById('output'),
+      btnClearOut: document.getElementById('btnClearOut'),
+      mem: document.getElementById('mem'),
+      pc: document.getElementById('pc'),
+      acc: document.getElementById('acc'),
+      accSigned: document.getElementById('accSigned'),
+      negFlag: document.getElementById('negFlag'),
+      instr: document.getElementById('instr'),
+      maxCycles: document.getElementById('maxCycles'),
+      waitBadge: document.getElementById('waitBadge'),
+    };
+
+    // Build RAM grid
+    function renderMemory() {
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < 32; i++) {
+        const d = document.createElement('div');
+        d.className = 'cell';
+        if (i === cpu.pc) d.classList.add('pc');
+        const instr = cpu.ram[i];
+        const opcode = (instr >> 5) & 0x7;
+        const operand = instr & 0x1F;
+        d.innerHTML = `
+          <div class="addr">@${i.toString().padStart(2,'0')}</div>
+          <div class="val">bin <strong>${instr.toString(2).padStart(8,'0')}</strong></div>
+          <div class="val muted small">dec ${instr}</div>
+          <div class="val muted small">op ${opcode.toString(2).padStart(3,'0')} • a ${operand.toString(2).padStart(5,'0')}</div>
+        `;
+        frag.appendChild(d);
+      }
+      els.mem.innerHTML = '';
+      els.mem.appendChild(frag);
+    }
+
+    function renderRegs() {
+      els.pc.textContent = `${cpu.pc} (${cpu.pc.toString(2).padStart(5,'0')})`;
+      els.acc.textContent = `${cpu.acc} (0x${cpu.acc.toString(16).padStart(2,'0')})`;
+      els.accSigned.textContent = cpu.signedAcc;
+      els.negFlag.textContent = `NEG=${cpu.neg}`;
+      els.negFlag.className = 'badge ' + (cpu.neg ? 'warn' : 'ok');
+      els.waitBadge.style.display = cpu.waitingForInput ? 'inline-flex' : 'none';
+
+      const instr = cpu.ram[cpu.pc];
+      if (!cpu.halted) {
+        els.instr.textContent = `${instr.toString(2).padStart(8,'0').slice(0,3)} ${instr.toString(2).padStart(8,'0').slice(3)}  (dec ${instr})`;
+      } else {
+        els.instr.textContent = '— HALT —';
+      }
+    }
+
+    function renderIO() {
+      els.inputQueue.textContent = `[ ${cpu.inputQueue.join(', ')} ]`;
+      els.output.textContent = cpu.output.join(' ');
+    }
+
+    function fullRender() { renderMemory(); renderRegs(); renderIO(); }
+
+    // Parse program text → bytes
+    function parseProgramText(txt) {
+      const tokens = txt.trim().split(/\s+|,|;|\n|\r/).filter(Boolean);
+      const bytes = [];
+      for (const t of tokens) {
+        const s = t.replace(/[^01]/g, '');
+        if (s.length === 0) continue;
+        if (s.length > 8) throw new Error(`Te lang binaire token: '${t}'`);
+        const b = parseInt(s, 2);
+        if (Number.isNaN(b)) throw new Error(`Ongeldig binair: '${t}'`);
+        if (b < 0 || b > 255) throw new Error(`Byte buiten bereik: '${t}'`);
+        bytes.push(b);
+      }
+      return bytes;
+    }
+
+    // Controls
+    els.btnLoad.addEventListener('click', () => {
+      try {
+        const bytes = parseProgramText(els.program.value);
+        cpu.ram.fill(0);
+        for (let i = 0; i < Math.min(bytes.length, 32); i++) cpu.ram[i] = bytes[i] & 0xFF;
+        cpu.pc = 0; cpu.halted = false; cpu.waitingForInput = false;
+        fullRender();
+      } catch (e) {
+        alert(e.message);
+      }
+    });
+
+    els.btnClear.addEventListener('click', () => { els.program.value = ''; });
+
+    els.btnReset.addEventListener('click', () => {
+      const saved = cpu.ram.slice();
+      cpu.reset();
+      cpu.ram.set(saved);
+      fullRender();
+    });
+
+    els.btnStep.addEventListener('click', () => {
+      const status = cpu.step();
+      if (status === 'WAIT') {
+        // stay on same PC until input arrives
+      }
+      fullRender();
+    });
+
+    let runTimer = null;
+    function runLoop(maxCycles=2000) {
+      let cycles = 0;
+      const tick = () => {
+        if (cpu.halted) { stopRun(); fullRender(); return; }
+        if (cycles++ >= maxCycles) { stopRun(); alert('Max cycles bereikt (infinite loop-beveiliging).'); fullRender(); return; }
+        const status = cpu.step();
+        if (status === 'WAIT') { stopRun(); fullRender(); return; }
+        if (cycles % 32 === 0) { // render regelmatig maar niet elk cycle
+          fullRender();
+        }
+        runTimer = requestAnimationFrame(tick);
+      };
+      runTimer = requestAnimationFrame(tick);
+    }
+    function stopRun(){ if (runTimer) cancelAnimationFrame(runTimer); runTimer = null; }
+
+    els.btnRun.addEventListener('click', () => {
+      const mc = parseInt(els.maxCycles.value || '2000', 10);
+      stopRun();
+      runLoop(Math.max(1, mc));
+    });
+
+    els.btnPause.addEventListener('click', () => { stopRun(); fullRender(); });
+
+    els.btnPushInput.addEventListener('click', () => {
+      const raw = els.inputVals.value.trim();
+      if (!raw) return;
+      const parts = raw.split(/\s*,\s*/).filter(Boolean);
+      const nums = [];
+      for (const p of parts) {
+        const v = Number(p);
+        if (!Number.isFinite(v) || v < 0 || v > 255) { alert(`Ongeldige input byte: ${p}`); return; }
+        nums.push(v & 0xFF);
+      }
+      cpu.pushInput(nums);
+      if (cpu.waitingForInput && cpu.inputQueue.length > 0) {
+        // Deliver immediately on next step
+        cpu.waitingForInput = false; // allow next step to consume
+      }
+      renderIO();
+    });
+
+    els.btnClearInput.addEventListener('click', () => { cpu.inputQueue = []; renderIO(); });
+    els.btnClearOut.addEventListener('click', () => { cpu.output = []; renderIO(); });
+
+    // Initial demo program
+    els.program.value = [
+      // Demo: INPUT → WRITE 31 → READ 31 → OUTPUT → HALT
+      // 100xxxxx (INPUT), 00111111 (WRITE 31), 00011111 (READ 31), 10100000 (OUTPUT), 11100000 (HALT)
+      '10000000', '00111111', '00011111', '10100000', '11100000'
+    ].join(' ');
+
+    fullRender();
+  </script>
+</body>
+</html>
